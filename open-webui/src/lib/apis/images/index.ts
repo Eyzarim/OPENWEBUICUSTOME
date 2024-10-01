@@ -1,5 +1,22 @@
 import { IMAGES_API_BASE_URL } from '$lib/constants';
 
+export const interpretImage = async (imageFile: File) => {
+    // Menyiapkan FormData untuk mengirim file gambar
+    const formData = new FormData();
+    formData.append('file', imageFile);
+
+    // Mengirim permintaan POST ke API interpretasi
+    const response = await fetch(`${IMAGES_API_BASE_URL}/interpretasi`, {
+        method: 'POST',
+        body: formData
+    });
+
+    // Menangani respons dari server dan mengembalikan prediksi
+    const data = await response.json();
+    return data.prediction; // Sesuaikan dengan respons dari API Anda
+};
+
+
 export const getConfig = async (token: string = '') => {
 	let error = null;
 

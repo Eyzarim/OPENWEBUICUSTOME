@@ -69,7 +69,7 @@
 	import Navbar from '$lib/components/layout/Navbar.svelte';
 	import ChatControls from './ChatControls.svelte';
 	import EventConfirmDialog from '../common/ConfirmDialog.svelte';
-
+	import interpretImage from '$lib/apis/images'
 	export let chatIdProp = '';
 
 	let loaded = false;
@@ -856,6 +856,26 @@
 
 		const responseMessage = history.messages[responseMessageId];
 		const userMessage = history.messages[responseMessage.parentId];
+		let _response = null;
+
+		const responseMessage = history.messages[responseMessageId];
+		const userMessage = history.messages[responseMessage.parentId];
+
+		// Dapatkan file gambar dari pesan pengguna (jika ada)
+		const imageFile = userMessage.files?.find((file) => file.type === 'image');
+
+		let interpretationMessage = null;
+
+		if (imageFile) {
+			// 1. Dapatkan hasil interpretasi dari model Anda
+			const interpretationResult = await interpretImage(imageFile);
+
+			// 2. Buat pesan baru dengan hasil interpretasi
+			interpretationMessage = {
+				role: 'system',
+				content: `Interpretasi gambar: ${interpretationResult}`
+			};
+		}
 
 		// Wait until history/message have been updated
 		await tick();
@@ -864,24 +884,28 @@
 		scrollToBottom();
 
 		const messagesBody = [
+			// Pesan sistem jika ada
 			params?.system || $settings.system || (responseMessage?.userContext ?? null)
 				? {
-						role: 'system',
-						content: `${promptTemplate(
-							params?.system ?? $settings?.system ?? '',
-							$user.name,
-							$settings?.userLocation
-								? await getAndUpdateUserLocation(localStorage.token)
-								: undefined
-						)}${
-							(responseMessage?.userContext ?? null)
-								? `\n\nUser Context:\n${responseMessage?.userContext ?? ''}`
-								: ''
-						}`
-					}
+					role: 'system',
+					content: `${promptTemplate(
+						params?.system ?? $settings?.system ?? '',
+						$user.name,
+						$settings?.userLocation
+							? await getAndUpdateUserLocation(localStorage.token)
+							: undefined
+					)}${
+						(responseMessage?.userContext ?? null)
+							? `\n\nUser Context:\n${responseMessage?.userContext ?? ''}`
+							: ''
+					}`
+				}
 				: undefined,
+			// Tambahkan pesan interpretasi jika ada
+			...(interpretationMessage ? [interpretationMessage] : []),
+			// Pesan-pesan dari percakapan
 			...createMessagesList(responseMessageId)
-		]
+    	]
 			.filter((message) => message?.content?.trim())
 			.map((message) => {
 				// Prepare the base message object

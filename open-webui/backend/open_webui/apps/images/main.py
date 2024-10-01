@@ -7,6 +7,8 @@ import re
 import uuid
 from pathlib import Path
 from typing import Optional
+from PIL import Image
+from fastapi import FastAPI, UploadFile, File, HTTPException
 
 import requests
 from open_webui.apps.images.utils.comfyui import (
@@ -40,6 +42,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from open_webui.utils.utils import get_admin_user, get_verified_user
+from open_webui.apps.images.utils.ResNetModel import ResNetModelInference
 
 log = logging.getLogger(__name__)
 log.setLevel(SRC_LOG_LEVELS["IMAGES"])
@@ -56,8 +59,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.state.config = AppConfig()
+MAX_FILE_SIZE = 5 * 1024 * 1024
 
+app.state.config = AppConfig()
+app.state.model_inference = ResNetModelInference(model_path='../utils/model.pth', num_classes=7)
 app.state.config.ENGINE = IMAGE_GENERATION_ENGINE
 app.state.config.ENABLED = ENABLE_IMAGE_GENERATION
 
@@ -102,6 +107,8 @@ async def get_config(request: Request, user=Depends(get_admin_user)):
         },
     }
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class OpenAIConfigForm(BaseModel):
     OPENAI_API_BASE_URL: str
@@ -186,6 +193,23 @@ async def update_config(form_data: ConfigForm, user=Depends(get_admin_user)):
         },
     }
 
+@app.post("/interpretasi")
+async def interpret_image(file: UploadFile = File(...)):
+    try:
+        contents = await file.read()
+        if len(contents) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=400, detail="File terlalu besar.")
+        image = Image.open(io.BytesIO(contents))
+        # Validasi format gambar
+        if image.format not in ["JPEG", "PNG"]:
+            raise HTTPException(status_code=400, detail="Format gambar tidak didukung.")
+        prediction = await asyncio.to_thread(app.state.model_inference.predict_image, image)
+        return {"prediction": prediction}
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.exception(f"Error processing image: {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
 
 def get_automatic1111_api_auth():
     if app.state.config.AUTOMATIC1111_API_AUTH is None:
